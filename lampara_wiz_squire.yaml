@@ -1,0 +1,271 @@
+substitutions:
+  sensor_update_frequency: 1s
+  log_level: debug
+  staticip: XXX.XXX.X.XXX
+  wifigateway: XXX.XXX.X.X
+  subnet: XXX.XXX.XXX.X
+  esphome_name: wiz-squire-esp
+  esphome_id: wiz-squire_esp
+  esphome_platform: ESP32
+  esphome_board: esp32dev
+  esphome_comment: wiz squire esp32-solo-1
+  devicename: wiz-squire_esp
+  upper_devicename: "Wiz squire esp"
+  temp_id: temp_interna_wiz_squire_esp
+  boton_id: boton_wiz_squire
+  ha_boton_id: pulsador_de_funcion
+  estado_luz_sup: estado_wiz_sup
+  estado_luz_inf: estado_wiz_inf
+  led_1_id: wiz_squire_esp_1
+  led_2_id: wiz_squire_esp_2
+  pwm_1_dimmer_id: dimmer_wiz-squire_esp_pwm_1
+  led_1_dimmer_id: dimmer_wiz-squire_esp_led_1
+  pwm_2_dimmer_id: dimmer_wiz-squire_esp_pwm_2
+  led_2_dimmer_id: dimmer_wiz-squire_esp_led_2
+  led_1_name: Wiz squire esp led 1
+  led_2_name: Wiz squire esp led 2
+  led_1_dimmer_name: Dimmer wiz squire esp led 1
+  led_2_dimmer_name: Dimmer wiz squire esp led 2
+
+esp32:
+  board: $esphome_board
+
+esphome: #Define detalles del proyecto y tipo de ESP
+  name: $esphome_name
+  comment: $esphome_comment
+  on_boot:
+    priority: 600
+    then:
+      - light.turn_on: $led_1_id
+      - light.turn_on: $led_2_id
+
+wifi:
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+
+  manual_ip:
+    static_ip: $staticip
+    gateway: $wifigateway
+    subnet: $subnet
+
+logger:
+  level: ${log_level}
+
+ota:
+  - platform: esphome
+    password: !secret ota_password_wiz-squire_esp
+
+api:
+  encryption:
+    key: !secret api_password_wiz-squire_esp
+  reboot_timeout: 0s
+
+
+button:
+  # Switch Control para reiniciar si hiciera falta
+  - platform: restart
+    name: "Reiniciar $upper_devicename"
+
+switch:
+  # Switch botón de función en home asistant
+  - platform: template
+    name: "Pulsador de función"
+    id: $ha_boton_id
+    icon: "mdi:power"
+    turn_on_action:
+      then:
+        - light.toggle: $led_1_id  
+        - light.toggle: $led_2_id
+    turn_off_action:
+      - light.turn_off: $led_1_id
+      - light.turn_off: $led_2_id  
+    lambda: |-
+      if (id($estado_luz_sup).state || id($estado_luz_inf).state) {
+        return true;  // Si cualquiera de los dos sensores está encendido, el switch se enciende
+      } else {
+        return false;  // Si ambos están apagados, el switch se apaga
+      }
+
+binary_sensor:
+  # Switch botón de función físico
+  - platform: gpio
+    id: $boton_id
+    pin:
+      number: GPIO16
+      mode: INPUT_PULLUP 
+      inverted: true   
+    name: "$upper_devicename pulsador de función"
+    on_press:
+      then:
+        - switch.turn_on: $ha_boton_id
+
+  # Sensor binario para reflejar el estado de las luces (invertido)
+  - platform: template
+    name: "$upper_devicename estado luz superior"
+    id: $estado_luz_sup
+    device_class: light
+  - platform: template
+    name: "$upper_devicename estado luz inferior"
+    id: $estado_luz_inf
+    device_class: light
+
+sensor:
+  - platform: uptime
+    name: $upper_devicename Uptime   # Tiempo desde último inicio.
+
+  - platform: wifi_signal # Señal wifi que recibe.
+    name: $upper_devicename Señal WiFi
+    update_interval: 60s
+    icon: "mdi:wifi"
+
+  - platform: internal_temperature
+    name: $upper_devicename temperatura interna # Muestra la tempreatura del didpositivo controlador, dentro de la caja.
+    update_interval: 60s
+    id: $temp_id
+    device_class: temperature
+    unit_of_measurement: °C
+    icon: "mdi:thermometer"
+    filters:
+      - calibrate_linear:
+         method: least_squares
+         datapoints:
+          - 0.0 -> 0.1
+          - 32.8 -> 21 # - "lo que marca" -> "temp. real"
+
+output:
+  # Zona superior
+  - platform: ledc
+    id: red_led_sup
+    pin: GPIO25
+    frequency: 1000 Hz
+  - platform: ledc
+    id: green_led_sup
+    pin: GPIO26
+    frequency: 1000 Hz
+  - platform: ledc
+    id: blue_led_sup
+    pin: GPIO27
+    frequency: 1000 Hz
+  - platform: ledc
+    id: warm_white_led_sup
+    pin: GPIO14
+    frequency: 1000 Hz
+  - platform: ledc
+    id: cold_white_led_sup
+    pin: GPIO2
+    frequency: 1000 Hz
+
+  # Zona inferior
+  - platform: ledc
+    id: red_led_inf
+    pin: GPIO19
+    frequency: 1000 Hz
+  - platform: ledc
+    id: green_led_inf
+    pin: GPIO18
+    frequency: 1000 Hz
+  - platform: ledc
+    id: blue_led_inf
+    pin: GPIO5
+    frequency: 1000 Hz
+  - platform: ledc
+    id: warm_white_led_inf
+    pin: GPIO13
+    frequency: 1000 Hz
+  - platform: ledc
+    id: cold_white_led_inf
+    pin: GPIO15
+    frequency: 1000 Hz
+
+light:
+  # Zona superior
+  - platform: rgbct
+    id: $led_1_id
+    name: "WiZ Squire Zona Superior RGB+CCT"
+    red: red_led_sup
+    green: green_led_sup
+    blue: blue_led_sup
+    color_temperature: warm_white_led_sup
+    white_brightness: cold_white_led_sup
+    cold_white_color_temperature: 153.8 mireds # 6500 K en mireds
+    warm_white_color_temperature: 454.5 mireds # 2200 K en Mireds
+    restore_mode: RESTORE_DEFAULT_ON
+    effects:
+      - random:
+          name: "Aleatorio cada 30s"
+          transition_length: 30s
+          update_interval: 30s
+      - pulse:
+      - pulse:
+          name: "Pulso rápido"
+          transition_length: 0.5s
+          update_interval: 0.5s
+          min_brightness: 0%
+          max_brightness: 100%
+      - pulse:
+          name: "Pulso lento"
+          transition_length: 500ms
+          update_interval: 2s
+      - pulse:
+          name: "Pulso asimétrico"
+          transition_length:
+            on_length: 1s
+            off_length: 500ms
+          update_interval: 1.5s
+      - flicker:
+          name: Parpadeo
+          alpha: 95%
+          intensity: 90%
+    on_turn_on:
+      - lambda: |-
+          id($estado_luz_sup).publish_state(true);  // Activa el sensor binario al encender la luz
+    on_turn_off:
+      - lambda: |-
+          id($estado_luz_sup).publish_state(false);
+
+  # Zona inferior
+  - platform: rgbww
+    id: $led_2_id
+    name: "WiZ Squire Zona Inferior RGBWW"
+    red: red_led_inf
+    green: green_led_inf
+    blue: blue_led_inf
+    warm_white: warm_white_led_inf
+    cold_white: cold_white_led_inf
+    cold_white_color_temperature: 6500 K
+    warm_white_color_temperature: 2200 K
+    restore_mode: RESTORE_DEFAULT_ON
+    effects:
+      - random:
+          name: "Aleatorio cada 30s"
+          transition_length: 30s
+          update_interval: 30s
+      - pulse:
+      - pulse:
+          name: "Pulso rápido"
+          transition_length: 0.5s
+          update_interval: 0.5s
+          min_brightness: 0%
+          max_brightness: 100%
+      - pulse:
+          name: "Pulso lento"
+          transition_length: 500ms
+          update_interval: 2s
+      - pulse:
+          name: "Pulso asimétrico"
+          transition_length:
+            on_length: 1s
+            off_length: 500ms
+          update_interval: 1.5s
+      - flicker:
+      - flicker:
+          name: Parpadeo
+          alpha: 95%
+          intensity: 1.5%
+    on_turn_on:
+      - lambda: |-
+          id($estado_luz_inf).publish_state(true);  // Activa el sensor binario al encender la luz
+    on_turn_off:
+      - lambda: |-
+          id($estado_luz_inf).publish_state(false);
